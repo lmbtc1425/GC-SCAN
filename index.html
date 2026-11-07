@@ -1,0 +1,1267 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Scanner GiftCard Amazon En Vivo</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <!-- Tesseract.js v5 CDN (Motor OCR Local) -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overscroll-behavior-y: contain;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .font-mono-code {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        @keyframes scanLine {
+            0% { top: 6%; opacity: 0.35; }
+            50% { top: 92%; opacity: 0.95; }
+            100% { top: 6%; opacity: 0.35; }
+        }
+        .scanner-laser {
+            position: absolute;
+            left: 4%;
+            right: 4%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #00E676, #69F0AE, #00E676, transparent);
+            box-shadow: 0 0 12px #00E676;
+            animation: scanLine 2.1s ease-in-out infinite;
+            pointer-events: none;
+        }
+        .guide-captured {
+            border-color: #00E676 !important;
+            background-color: rgba(0, 230, 118, 0.25) !important;
+            transform: scale(1.02);
+            box-shadow: 0 0 35px rgba(0, 230, 118, 0.85);
+        }
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 9999px;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-900 h-[100dvh] w-full overflow-hidden flex flex-col">
+
+    <!-- =================================================================== -->
+    <!-- MITAD SUPERIOR (46%): VISOR DE CÁMARA CONTINUA (SIN TOMAR FOTOS)    -->
+    <!-- =================================================================== -->
+    <section class="relative w-full h-[46%] bg-black overflow-hidden flex items-center justify-center shrink-0">
+        <!-- Video en vivo de la cámara trasera -->
+        <video id="camera-video" autoplay playsinline muted class="w-full h-full object-cover"></video>
+
+        <!-- Vista previa opcional solo cuando el usuario prueba subiendo una captura -->
+        <img id="fallback-preview" alt="Vista previa" class="hidden w-full h-full object-contain bg-black" />
+
+        <!-- Barra superior de controles -->
+        <div class="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between z-20 gap-1.5">
+            <div class="flex items-center gap-1.5">
+                <!-- Pausar / Reanudar escaneo automático -->
+                <button id="btn-toggle-scan" type="button"
+                    class="flex items-center gap-1.5 bg-black/70 hover:bg-black/85 active:scale-95 text-white text-xs font-semibold px-3 py-1.5 rounded-full backdrop-blur-md border border-white/15 transition">
+                    <span id="scan-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span id="scan-toggle-text">En Vivo</span>
+                </button>
+
+                <!-- Botón Linterna -->
+                <button id="btn-torch" type="button"
+                    class="hidden items-center justify-center bg-black/70 hover:bg-black/85 active:scale-95 text-white p-1.5 rounded-full backdrop-blur-md border border-white/15 transition"
+                    title="Linterna">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Control deslizante de Zoom (1x a 3x) para enfocar pantallas sin reflejos -->
+            <div class="flex items-center gap-1.5 bg-black/70 px-2.5 py-1 rounded-full backdrop-blur-md border border-white/15 text-white text-[11px]">
+                <span class="font-semibold text-emerald-300" id="zoom-label">1.0x</span>
+                <input id="zoom-slider" type="range" min="1" max="3" step="0.1" value="1"
+                    class="w-16 sm:w-24 accent-emerald-400 cursor-pointer h-1 bg-slate-600 rounded-lg">
+            </div>
+
+            <div class="flex items-center gap-1.5">
+                <!-- Probar imagen real (subir captura sin forzar cámara de fotos) -->
+                <label for="file-test-input"
+                    class="cursor-pointer flex items-center gap-1 bg-black/70 hover:bg-black/85 active:scale-95 text-white text-[11px] font-medium px-2.5 py-1.5 rounded-full backdrop-blur-md border border-white/15 transition"
+                    title="Probar con una imagen guardada">
+                    <svg class="w-3.5 h-3.5 text-sky-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                    </svg>
+                    <span>Probar Imagen</span>
+                </label>
+                <input id="file-test-input" type="file" accept="image/*" class="hidden">
+
+                <!-- Botón Demo con los datos reales de tu foto: 4MV7972GK4P4AK ($95) -->
+                <button id="btn-simulate" type="button"
+                    class="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-[11px] font-semibold px-2.5 py-1.5 rounded-full shadow-md transition">
+                    <span>Demo $95</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Recuadro Guía Vertical adaptado a la pantalla de Amazon (Valor arriba + Código abajo) -->
+        <div id="guide-box"
+            class="relative w-[88%] h-[68%] border-2 border-[#00E676] rounded-2xl transition-all duration-200 pointer-events-none flex flex-col justify-between p-2.5 shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]">
+            
+            <!-- Zona Superior: Monto ($95⁰⁰) -->
+            <div class="flex justify-between items-center border-b border-dashed border-emerald-400/40 pb-1.5">
+                <span class="text-[10px] font-semibold uppercase tracking-wider bg-black/65 text-emerald-300 px-2 py-0.5 rounded">
+                    1. Enfoca Valor ($95⁰⁰)
+                </span>
+                <span id="engine-badge" class="text-[10px] font-mono-code bg-black/65 text-sky-300 px-2 py-0.5 rounded">
+                    Escáner Continuo
+                </span>
+            </div>
+
+            <!-- Línea láser de barrido continuo -->
+            <div id="scanner-laser" class="scanner-laser"></div>
+
+            <!-- Zona Inferior: Código de canje (4MV7972GK4P4AK) -->
+            <div class="flex justify-between items-center border-t border-dashed border-emerald-400/40 pt-1.5">
+                <span class="text-[10px] font-semibold uppercase tracking-wider bg-black/65 text-amber-300 px-2 py-0.5 rounded">
+                    2. Código de canje: 4MV7972GK4P4AK
+                </span>
+                <span class="text-[10px] font-mono-code text-white/80 bg-black/60 px-1.5 py-0.5 rounded">
+                    Auto-captura
+                </span>
+            </div>
+        </div>
+
+        <!-- Indicadores HUD en tiempo real (Memoria Dual: engancha Valor y Código aunque enfoques uno primero y otro después) -->
+        <div class="absolute bottom-2 left-2.5 right-2.5 flex flex-col gap-1 z-20 pointer-events-none">
+            <div class="grid grid-cols-2 gap-1.5">
+                <!-- Píldora de Valor enganchado -->
+                <div id="hud-value-box" class="bg-black/80 border border-white/15 rounded-lg px-2.5 py-1 flex items-center justify-between backdrop-blur-md transition-colors">
+                    <span class="text-[10px] text-slate-300 uppercase font-semibold">Valor en vista:</span>
+                    <span id="hud-value-text" class="text-xs font-mono-code font-bold text-amber-300">Buscando $...</span>
+                </div>
+                <!-- Píldora de Código enganchado -->
+                <div id="hud-code-box" class="bg-black/80 border border-white/15 rounded-lg px-2.5 py-1 flex items-center justify-between backdrop-blur-md transition-colors">
+                    <span class="text-[10px] text-slate-300 uppercase font-semibold">Código:</span>
+                    <span id="hud-code-text" class="text-xs font-mono-code font-bold text-emerald-300 truncate ml-1">Buscando...</span>
+                </div>
+            </div>
+            <!-- Estado general -->
+            <div id="status-pill"
+                class="bg-black/80 text-white text-[11px] font-medium px-3 py-1 rounded-full backdrop-blur-md border border-white/10 truncate text-center shadow">
+                Apunta la cámara a la pantalla de Amazon (no necesitas tomar foto)
+            </div>
+        </div>
+
+        <!-- Aviso explicativo si el usuario abrió el HTML como archivo local file:// en Android -->
+        <div id="camera-fallback-msg" class="hidden absolute inset-0 bg-slate-950/95 z-30 flex-col items-center justify-center p-4 text-center">
+            <div class="w-9 h-9 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center mb-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                </svg>
+            </div>
+            <p class="text-white text-xs sm:text-sm font-bold mb-1">
+                ¿Por qué tu navegador bloqueó el video en vivo?
+            </p>
+            <p class="text-slate-300 text-[11px] max-w-md mb-2.5 leading-relaxed">
+                Cuando abres un archivo <code class="text-amber-300">.html</code> descargado en el teléfono (<code class="text-amber-300">file://</code> o <code class="text-amber-300">content://</code>), Chrome desactiva el video continuo por seguridad. Para usar la <b>cámara en vivo sin tomar fotos</b>, ábrelo desde el botón <b>Preview</b> de esta conversación en tu celular o súbelo gratis en 5 segundos a <b>app.netlify.com/drop</b>.
+            </p>
+            <div class="flex flex-wrap justify-center gap-2">
+                <button id="btn-retry-camera" type="button"
+                    class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3.5 py-2 rounded-lg transition">
+                    Activar Cámara en Vivo
+                </button>
+                <label for="file-test-input"
+                    class="cursor-pointer bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold px-3.5 py-2 rounded-lg transition">
+                    Analizar Imagen / Captura
+                </label>
+            </div>
+        </div>
+
+        <!-- Canvas oculto de alta nitidez para procesar los fotogramas de video -->
+        <canvas id="ocr-canvas" class="hidden"></canvas>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- MITAD INFERIOR (54%): LISTA ACUMULATIVA Y EXPORTACIÓN               -->
+    <!-- =================================================================== -->
+    <section class="w-full h-[54%] bg-slate-100 flex flex-col justify-between p-3.5 sm:p-4 rounded-t-2xl -mt-2 z-30 shadow-2xl">
+        
+        <!-- Encabezado de la lista -->
+        <div class="flex items-center justify-between pb-2 border-b border-slate-200 shrink-0">
+            <div>
+                <h1 class="text-slate-900 font-bold text-base sm:text-lg tracking-tight">
+                    Códigos acumulados (<span id="codes-count">0</span>)
+                </h1>
+                <p class="text-[11px] text-slate-500">Formato limpio sin guiones: <span class="font-mono-code font-semibold text-slate-700">4MV7972GK4P4AK ($95)</span></p>
+            </div>
+
+            <!-- Botón para agregar o corregir un código manualmente -->
+            <button id="btn-open-manual" type="button"
+                class="flex items-center gap-1 text-xs font-semibold text-sky-700 bg-sky-100 hover:bg-sky-200 active:scale-95 px-2.5 py-1.5 rounded-lg transition shrink-0">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+                </svg>
+                <span>Manual</span>
+            </button>
+        </div>
+
+        <!-- Contenedor desplazable de códigos -->
+        <div id="codes-list-container" class="flex-1 my-2 bg-white rounded-xl border border-slate-200/90 shadow-inner overflow-y-auto divide-y divide-slate-100">
+            <!-- Estado vacío -->
+            <div id="empty-state" class="h-full flex flex-col items-center justify-center text-center p-5 text-slate-400">
+                <svg class="w-9 h-9 mb-1.5 text-slate-300" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 7V5a2 2 0 012-2h2m10 0h2a2 2 0 012 2v2m0 10v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2m4-5h10"/>
+                </svg>
+                <p class="text-xs sm:text-sm font-semibold text-slate-600">Enfoca la pantalla de Amazon para acumular</p>
+                <p class="text-[11px] text-slate-400 mt-1 max-w-xs leading-relaxed">
+                    Puedes enfocar primero el monto <b>$95⁰⁰</b> y luego bajar al <b>Código de canje</b>: el escáner los une automáticamente sin tomar fotos.
+                </p>
+            </div>
+
+            <!-- Lista dinámica -->
+            <ul id="codes-list" class="hidden divide-y divide-slate-100"></ul>
+        </div>
+
+        <!-- Barra inferior de botones -->
+        <div class="grid grid-cols-2 gap-3 pt-1 shrink-0">
+            <button id="btn-copy-all" type="button"
+                class="flex items-center justify-center gap-2 bg-[#1976D2] hover:bg-blue-700 active:scale-[0.98] text-white font-semibold text-sm py-3 px-4 rounded-xl shadow-md transition disabled:opacity-45 disabled:pointer-events-none">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                </svg>
+                <span>Copiar Lista</span>
+            </button>
+
+            <button id="btn-clear-all" type="button"
+                class="flex items-center justify-center gap-2 bg-white hover:bg-red-50 active:scale-[0.98] text-[#D32F2F] border border-red-300 font-semibold text-sm py-3 px-4 rounded-xl transition disabled:opacity-45 disabled:pointer-events-none">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                </svg>
+                <span>Limpiar Todo</span>
+            </button>
+        </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- MODAL PARA AGREGAR / EDITAR CÓDIGO MANUALMENTE                      -->
+    <!-- =================================================================== -->
+    <div id="manual-modal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-2xl border border-slate-100">
+            <div class="flex items-center justify-between mb-3">
+                <h2 id="modal-title" class="text-base font-bold text-slate-800">Agregar / Editar Código</h2>
+                <button id="btn-close-modal" type="button" class="text-slate-400 hover:text-slate-600 p-1">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <form id="manual-form" class="space-y-3">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Código de canje (14 o 15 caracteres)</label>
+                    <input id="input-manual-code" type="text" placeholder="4MV7972GK4P4AK" required
+                        class="w-full font-mono-code uppercase text-sm px-3 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-sky-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Valor en USD</label>
+                    <input id="input-manual-value" type="text" placeholder="$95" required
+                        class="w-full font-mono-code text-sm px-3 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-sky-500">
+                </div>
+                <p id="manual-error" class="hidden text-xs font-medium text-red-600"></p>
+                <div class="flex justify-end gap-2 pt-2">
+                    <button id="btn-cancel-modal" type="button"
+                        class="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition">
+                        Cancelar
+                    </button>
+                    <button type="submit"
+                        class="px-4 py-2 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-700 rounded-lg shadow transition">
+                        Guardar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- =================================================================== -->
+    <!-- MODAL DE CONFIRMACIÓN PARA LIMPIAR TODO                             -->
+    <!-- =================================================================== -->
+    <div id="confirm-clear-modal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-xs rounded-2xl p-5 shadow-2xl text-center">
+            <div class="w-11 h-11 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-3">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                </svg>
+            </div>
+            <h3 class="text-base font-bold text-slate-800 mb-1">¿Limpiar toda la lista?</h3>
+            <p class="text-xs text-slate-500 mb-4">
+                Se borrarán todos los códigos acumulados y podrás volver a escanearlos desde cero.
+            </p>
+            <div class="grid grid-cols-2 gap-2">
+                <button id="btn-cancel-clear" type="button"
+                    class="py-2.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition">
+                    Cancelar
+                </button>
+                <button id="btn-confirm-clear" type="button"
+                    class="py-2.5 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl shadow transition">
+                    Sí, borrar todo
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- =================================================================== -->
+    <!-- NOTIFICACIÓN TOAST FLOTANTE                                         -->
+    <!-- =================================================================== -->
+    <div id="toast"
+        class="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 pointer-events-none opacity-0 transition-all duration-300 transform translate-y-2 bg-slate-900/95 text-white text-xs font-semibold px-4 py-2.5 rounded-full shadow-xl border border-white/10 flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <span id="toast-text">Lista copiada al portapapeles</span>
+    </div>
+
+    <!-- =================================================================== -->
+    <!-- MOTOR DE CAPTURA EN VIVO + RECONOCIMIENTO DE PANTALLA AMAZON        -->
+    <!-- =================================================================== -->
+    <script>
+        (function () {
+            // --- Referencias del DOM ---
+            const videoEl = document.getElementById('camera-video');
+            const fallbackPreviewEl = document.getElementById('fallback-preview');
+            const guideBoxEl = document.getElementById('guide-box');
+            const laserEl = document.getElementById('scanner-laser');
+            const statusPillEl = document.getElementById('status-pill');
+            const engineBadgeEl = document.getElementById('engine-badge');
+            const cameraFallbackMsg = document.getElementById('camera-fallback-msg');
+            const ocrCanvas = document.getElementById('ocr-canvas');
+            const ocrCtx = ocrCanvas.getContext('2d', { willReadFrequently: true });
+
+            const hudValueBox = document.getElementById('hud-value-box');
+            const hudValueText = document.getElementById('hud-value-text');
+            const hudCodeBox = document.getElementById('hud-code-box');
+            const hudCodeText = document.getElementById('hud-code-text');
+
+            const btnToggleScan = document.getElementById('btn-toggle-scan');
+            const scanDot = document.getElementById('scan-dot');
+            const scanToggleText = document.getElementById('scan-toggle-text');
+            const btnTorch = document.getElementById('btn-torch');
+            const zoomSlider = document.getElementById('zoom-slider');
+            const zoomLabel = document.getElementById('zoom-label');
+            const btnSimulate = document.getElementById('btn-simulate');
+            const btnRetryCamera = document.getElementById('btn-retry-camera');
+            const fileTestInput = document.getElementById('file-test-input');
+
+            const codesCountEl = document.getElementById('codes-count');
+            const emptyStateEl = document.getElementById('empty-state');
+            const codesListEl = document.getElementById('codes-list');
+            const btnCopyAll = document.getElementById('btn-copy-all');
+            const btnClearAll = document.getElementById('btn-clear-all');
+
+            const btnOpenManual = document.getElementById('btn-open-manual');
+            const manualModal = document.getElementById('manual-modal');
+            const modalTitle = document.getElementById('modal-title');
+            const btnCloseModal = document.getElementById('btn-close-modal');
+            const btnCancelModal = document.getElementById('btn-cancel-modal');
+            const manualForm = document.getElementById('manual-form');
+            const inputManualCode = document.getElementById('input-manual-code');
+            const inputManualValue = document.getElementById('input-manual-value');
+            const manualError = document.getElementById('manual-error');
+
+            const confirmClearModal = document.getElementById('confirm-clear-modal');
+            const btnCancelClear = document.getElementById('btn-cancel-clear');
+            const btnConfirmClear = document.getElementById('btn-confirm-clear');
+
+            const toastEl = document.getElementById('toast');
+            const toastTextEl = document.getElementById('toast-text');
+
+            // --- Estado Principal ---
+            const STORAGE_KEY = 'amazon_giftcard_live_list_v2';
+            let scannedList = [];
+            const scannedSet = new Set();
+
+            let mediaStream = null;
+            let videoTrack = null;
+            let supportsHardwareZoom = false;
+            let currentZoom = 1;
+            let torchOn = false;
+            let isScanning = true;
+            let isLocalOcrBusy = false;
+            let isCloudVisionBusy = false;
+            let ocrWorker = null;
+            let editingCodeKey = null;
+
+            // --- Memoria Temporal de Enganche Dual (Latching) ---
+            // Permite que el usuario enfoque primero "$95⁰⁰" arriba y luego baje a "Código de canje: 4MV7972GK4P4AK"
+            let latchedValue = null;
+            let latchedValueTime = 0;
+            let latchedCode = null;
+            let latchedCodeTime = 0;
+            const LATCH_DURATION_MS = 9000; // Mantiene el dato enganchado por 9 segundos
+
+            // --- Sonido Beep de Confirmación ---
+            let audioCtx = null;
+            function playBeep() {
+                try {
+                    if (!audioCtx) {
+                        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                        if (AudioContextClass) audioCtx = new AudioContextClass();
+                    }
+                    if (!audioCtx) return;
+                    if (audioCtx.state === 'suspended') audioCtx.resume();
+
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(1174.66, audioCtx.currentTime); // D6 nítido
+                    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.13);
+
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.13);
+                } catch (e) {}
+            }
+
+            function triggerHaptic() {
+                try {
+                    if (navigator.vibrate) navigator.vibrate([65, 40, 65]);
+                } catch (e) {}
+            }
+
+            let toastTimer = null;
+            function showToast(message) {
+                toastTextEl.textContent = message;
+                toastEl.classList.remove('opacity-0', 'translate-y-2');
+                toastEl.classList.add('opacity-100', 'translate-y-0');
+                clearTimeout(toastTimer);
+                toastTimer = setTimeout(() => {
+                    toastEl.classList.add('opacity-0', 'translate-y-2');
+                    toastEl.classList.remove('opacity-100', 'translate-y-0');
+                }, 2500);
+            }
+
+            // --- Almacenamiento Local ---
+            function saveToStorage() {
+                try {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(scannedList));
+                } catch (e) {}
+            }
+
+            function loadFromStorage() {
+                try {
+                    const raw = localStorage.getItem(STORAGE_KEY);
+                    if (!raw) return;
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed)) {
+                        scannedList = [];
+                        scannedSet.clear();
+                        parsed.forEach(item => {
+                            if (item && item.code && item.value && !scannedSet.has(item.code)) {
+                                scannedSet.add(item.code);
+                                scannedList.push({ code: item.code, value: item.value });
+                            }
+                        });
+                        renderList();
+                    }
+                } catch (e) {}
+            }
+
+            // ===================================================================
+            // 1. EXTRACTOR ESPECIALIZADO PARA EL VALOR "$95⁰⁰" DE AMAZON
+            // ===================================================================
+            // En la pantalla de Amazon, el monto viene como "$95⁰⁰" (los centavos "00" están en superíndice
+            // SIN punto decimal). El OCR suele leerlo como "$9500", "S9500", "$95 00", "$95OO", "$95.00" o "9500".
+            function extractAmazonUsdValue(rawText) {
+                if (!rawText) return null;
+
+                // Limpiar líneas que contengan el código de canje o correos para no confundir números del código con el monto
+                const cleanedLines = rawText
+                    .split(/\r?\n/)
+                    .filter(line => !/canje|c[oó]digo|gmail|hotmail|outlook|yahoo|@/i.test(line))
+                    .join(' ');
+
+                // Normalizar errores típicos de OCR en el superíndice "00" (como OO, °°, ºº)
+                let norm = cleanedLines
+                    .replace(/(\$\s*\d{1,3})[O°ºo]{2}\b/g, '$1.00')
+                    .replace(/\bS(\d{2,5})\b/g, '$$$1'); // Cuando el OCR lee "$" como "S" mayúscula pegada al número (ej. S9500)
+
+                // Caso A: Formato con centavos separados por espacio o punto: "$95.00", "$95 00", "$ 95 00"
+                const spaceOrDotMatch = norm.match(/\$\s*(\d{1,4})[\s.,]+(\d{2})\b/);
+                if (spaceOrDotMatch) {
+                    const dollars = parseInt(spaceOrDotMatch[1], 10);
+                    const cents = spaceOrDotMatch[2];
+                    if (dollars >= 1 && dollars <= 2000) {
+                        return cents === '00' ? `$${dollars}` : `$${dollars}.${cents}`;
+                    }
+                }
+
+                // Caso B: Superíndice leído de corrido sin punto: "$9500" -> $95, "$2500" -> $25, "$10000" -> $100
+                const directDollarMatch = norm.match(/\$\s*(\d{1,6})\b/);
+                if (directDollarMatch) {
+                    let num = parseInt(directDollarMatch[1], 10);
+                    // Si termina en "00" y es >= 500 (ej. 500=$5, 1000=$10, 9500=$95, 10000=$100, 50000=$500)
+                    if (num >= 500 && num <= 200000 && num % 100 === 0) {
+                        num = num / 100;
+                    }
+                    if (num >= 1 && num <= 2000) {
+                        return `$${num}`;
+                    }
+                }
+
+                // Caso C: Número con "USD" (ej. "95 USD" o "95.00 USD")
+                const usdMatch = norm.match(/\b(\d{1,4})(?:\.(\d{2}))?\s*USD\b/i);
+                if (usdMatch) {
+                    const dollars = parseInt(usdMatch[1], 10);
+                    const cents = usdMatch[2];
+                    if (dollars >= 1 && dollars <= 2000) {
+                        return (!cents || cents === '00') ? `$${dollars}` : `$${dollars}.${cents}`;
+                    }
+                }
+
+                // Caso D: En la línea superior junto a la palabra "amazon" aparece "9500" sin que el OCR haya captado el signo "$"
+                const amazonLineMatch = rawText.match(/amazon[^\d\n]{0,15}(\d{3,5})\b/i);
+                if (amazonLineMatch) {
+                    let num = parseInt(amazonLineMatch[1], 10);
+                    if (num >= 500 && num <= 100000 && num % 100 === 0) {
+                        return `$${num / 100}`;
+                    }
+                }
+
+                return null;
+            }
+
+            // ===================================================================
+            // 2. EXTRACTOR ESPECIALIZADO PARA "Código de canje: 4MV7972GK4P4AK"
+            // ===================================================================
+            function extractValidAmazonCode(rawText) {
+                if (!rawText) return null;
+
+                // Eliminar correos electrónicos primero para jamás confundirlos
+                const textWithoutEmails = rawText.replace(/\S+@\S+\.\S+/g, ' ');
+
+                // Prioridad 1: Buscar explícitamente después de "canje:" o "Código de canje"
+                const afterCanjeMatch = textWithoutEmails.match(/(?:canje|c[oó]digo\s*de\s*canje|claim\s*code)\s*[:.;-]?\s*([A-Z0-9\s-]{14,22})/i);
+                if (afterCanjeMatch && afterCanjeMatch[1]) {
+                    // Limpiar la palabra "Copiar" si el OCR la pegó al final del código
+                    const cleanedSegment = afterCanjeMatch[1]
+                        .replace(/copiar.*$/i, '')
+                        .replace(/[^A-Z0-9]/gi, '')
+                        .toUpperCase();
+
+                    if (cleanedSegment.length >= 14 && cleanedSegment.length <= 15) {
+                        if (/[A-Z]/.test(cleanedSegment) && /\d/.test(cleanedSegment)) {
+                            return cleanedSegment;
+                        }
+                    } else if (cleanedSegment.length > 15) {
+                        // Si el icono de "ojo/copiar" después del código se leyó como 1 carácter extra al final, tomamos los primeros 14 caracteres
+                        const first14 = cleanedSegment.slice(0, 14);
+                        if (/[A-Z]/.test(first14) && /\d/.test(first14)) {
+                            return first14;
+                        }
+                    }
+                }
+
+                // Prioridad 2: Buscar en todo el texto tokens en MAYÚSCULAS + NÚMEROS de 14 o 15 caracteres (con o sin guiones)
+                // Al no forzar mayúsculas en el OCR, las palabras normales ("Cambiar", "aplicado", "tarjeta") tienen minúsculas y se descartan solas.
+                const cleanCopyWord = textWithoutEmails.replace(/Copiar/gi, ' ');
+                const candidateRegex = /\b(?:[A-Z0-9]{4}[\s-]+[A-Z0-9]{6}[\s-]+[A-Z0-9]{4,5}|[A-Z0-9]{14,15})\b/g;
+                const matches = cleanCopyWord.match(candidateRegex) || [];
+
+                for (const rawCandidate of matches) {
+                    const cleanCode = rawCandidate.replace(/[\s-]/g, '').toUpperCase();
+                    const digitCount = (cleanCode.match(/\d/g) || []).length;
+                    const letterCount = (cleanCode.match(/[A-Z]/g) || []).length;
+
+                    // Los códigos de Amazon siempre combinan al menos 2 números y al menos 2 letras
+                    if (
+                        (cleanCode.length === 14 || cleanCode.length === 15) &&
+                        digitCount >= 2 &&
+                        letterCount >= 2
+                    ) {
+                        return cleanCode;
+                    }
+                }
+
+                return null;
+            }
+
+            // ===================================================================
+            // 3. SISTEMA DE MEMORIA DUAL (UNE VALOR + CÓDIGO AUTOMÁTICAMENTE)
+            // ===================================================================
+            function updateLatchingHUD() {
+                const now = Date.now();
+                if (latchedValue && now - latchedValueTime > LATCH_DURATION_MS) {
+                    latchedValue = null;
+                }
+                if (latchedCode && now - latchedCodeTime > LATCH_DURATION_MS) {
+                    latchedCode = null;
+                }
+
+                if (latchedValue) {
+                    hudValueText.textContent = latchedValue;
+                    hudValueBox.classList.add('border-emerald-400', 'bg-emerald-950/80');
+                    hudValueBox.classList.remove('border-white/15', 'bg-black/80');
+                } else {
+                    hudValueText.textContent = 'Buscando $...';
+                    hudValueBox.classList.remove('border-emerald-400', 'bg-emerald-950/80');
+                    hudValueBox.classList.add('border-white/15', 'bg-black/80');
+                }
+
+                if (latchedCode) {
+                    hudCodeText.textContent = latchedCode;
+                    hudCodeBox.classList.add('border-emerald-400', 'bg-emerald-950/80');
+                    hudCodeBox.classList.remove('border-white/15', 'bg-black/80');
+                } else {
+                    hudCodeText.textContent = 'Buscando...';
+                    hudCodeBox.classList.remove('border-emerald-400', 'bg-emerald-950/80');
+                    hudCodeBox.classList.add('border-white/15', 'bg-black/80');
+                }
+            }
+
+            function processExtractedData(foundCode, foundValue, isManualOrSim = false) {
+                const now = Date.now();
+
+                if (foundValue) {
+                    latchedValue = foundValue;
+                    latchedValueTime = now;
+                }
+                if (foundCode) {
+                    latchedCode = foundCode;
+                    latchedCodeTime = now;
+                }
+
+                updateLatchingHUD();
+
+                // Si ya tenemos TANTO el código COMO el valor enganchados en la ventana de tiempo:
+                if (latchedCode && latchedValue) {
+                    const finalCode = latchedCode;
+                    const finalValue = latchedValue;
+
+                    if (scannedSet.has(finalCode)) {
+                        if (isManualOrSim) {
+                            showToast(`El código ${finalCode} ya está en la lista`);
+                        } else {
+                            statusPillEl.textContent = `Ya escaneado: ${finalCode} (${finalValue}) — Pasa a la siguiente Gift Card`;
+                        }
+                        return false;
+                    }
+
+                    // Registrar en la lista acumulativa
+                    scannedSet.add(finalCode);
+                    scannedList.unshift({ code: finalCode, value: finalValue });
+                    saveToStorage();
+                    renderList();
+
+                    // Limpiar enganche actual para preparar la siguiente tarjeta
+                    latchedCode = null;
+                    latchedValue = null;
+                    updateLatchingHUD();
+
+                    const formattedOutput = `${finalCode} (${finalValue})`;
+                    statusPillEl.textContent = `¡Capturado! ${formattedOutput}`;
+                    guideBoxEl.classList.add('guide-captured');
+                    setTimeout(() => guideBoxEl.classList.remove('guide-captured'), 420);
+
+                    triggerHaptic();
+                    playBeep();
+                    showToast(`Agregado: ${formattedOutput}`);
+                    return true;
+                }
+
+                // Si solo encontró uno de los dos en este fotograma, guiar al usuario sin que tenga que tomar foto
+                if (latchedValue && !latchedCode) {
+                    statusPillEl.textContent = `Valor ${latchedValue} listo. Enfoca un poco más abajo al "Código de canje"`;
+                } else if (latchedCode && !latchedValue) {
+                    statusPillEl.textContent = `Código ${latchedCode} listo. Enfoca arriba al monto en dólares ($95⁰⁰)`;
+                }
+                return false;
+            }
+
+            function parseRawOcrText(rawText, isManualOrSim = false) {
+                if (!rawText) return false;
+                const code = extractValidAmazonCode(rawText);
+                const val = extractAmazonUsdValue(rawText);
+                return processExtractedData(code, val, isManualOrSim);
+            }
+
+            // ===================================================================
+            // 4. CÁMARA EN VIVO CON AUTOFOCO Y ZOOM (1x - 3x)
+            // ===================================================================
+            async function initCamera() {
+                cameraFallbackMsg.classList.add('hidden');
+                cameraFallbackMsg.classList.remove('flex');
+                fallbackPreviewEl.classList.add('hidden');
+                videoEl.classList.remove('hidden');
+
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    showCameraFallback();
+                    return;
+                }
+
+                try {
+                    if (mediaStream) {
+                        mediaStream.getTracks().forEach(t => t.stop());
+                    }
+
+                    mediaStream = await navigator.mediaDevices.getUserMedia({
+                        audio: false,
+                        video: {
+                            facingMode: { ideal: 'environment' },
+                            width: { ideal: 1920 },
+                            height: { ideal: 1080 }
+                        }
+                    });
+
+                    videoEl.srcObject = mediaStream;
+                    await videoEl.play();
+
+                    videoTrack = mediaStream.getVideoTracks()[0];
+                    if (videoTrack && typeof videoTrack.getCapabilities === 'function') {
+                        const caps = videoTrack.getCapabilities();
+                        // Activar linterna si existe
+                        if (caps && caps.torch) {
+                            btnTorch.classList.remove('hidden');
+                            btnTorch.classList.add('flex');
+                        }
+                        // Activar zoom por hardware si existe
+                        if (caps && caps.zoom) {
+                            supportsHardwareZoom = true;
+                            zoomSlider.min = caps.zoom.min || 1;
+                            zoomSlider.max = Math.min(caps.zoom.max || 3, 4);
+                            zoomSlider.step = caps.zoom.step || 0.1;
+                        }
+                        // Forzar enfoque continuo para leer pantallas de celular o PC con nitidez
+                        if (caps && caps.focusMode && caps.focusMode.includes('continuous')) {
+                            try {
+                                await videoTrack.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+                            } catch (e) {}
+                        }
+                    }
+
+                    statusPillEl.textContent = 'Cámara en vivo activa. Apunta a la pantalla de Amazon.';
+                } catch (err) {
+                    showCameraFallback();
+                }
+            }
+
+            function showCameraFallback() {
+                cameraFallbackMsg.classList.remove('hidden');
+                cameraFallbackMsg.classList.add('flex');
+                statusPillEl.textContent = 'Video en vivo bloqueado por archivo local. Usa Preview o Analizar Imagen.';
+            }
+
+            // Control de Zoom (Hardware o Digital sobre el video)
+            zoomSlider.addEventListener('input', async (e) => {
+                currentZoom = parseFloat(e.target.value) || 1;
+                zoomLabel.textContent = `${currentZoom.toFixed(1)}x`;
+
+                if (supportsHardwareZoom && videoTrack) {
+                    try {
+                        await videoTrack.applyConstraints({ advanced: [{ zoom: currentZoom }] });
+                        videoEl.style.transform = 'scale(1)';
+                        return;
+                    } catch (err) {}
+                }
+                // Zoom digital limpio si el teléfono no expone zoom óptico
+                videoEl.style.transform = `scale(${currentZoom})`;
+            });
+
+            // ===================================================================
+            // 5. MOTOR DUAL DE LECTURA: TESSERACT LOCAL + GEMINI VISION API
+            // ===================================================================
+            async function initOcrEngine() {
+                try {
+                    engineBadgeEl.textContent = 'Iniciando OCR...';
+                    // Importante: NO restringir a solo mayúsculas para que Tesseract distinga
+                    // perfectamente "Código de canje:" y "Copiar" del código en mayúsculas "4MV7972GK4P4AK"
+                    ocrWorker = await Tesseract.createWorker('eng');
+                    engineBadgeEl.textContent = 'Escáner Activo';
+                } catch (err) {
+                    engineBadgeEl.textContent = 'Visión IA';
+                }
+            }
+
+            // Captura un fotograma del video en vivo y mejora el contraste de texto negro sobre fondo blanco
+            function captureVideoFrameToCanvas() {
+                if (videoEl.readyState < 2 || videoEl.videoWidth === 0) return false;
+
+                const vw = videoEl.videoWidth;
+                const vh = videoEl.videoHeight;
+
+                // Recortar teniendo en cuenta el zoom digital si está activo
+                const effectiveZoom = supportsHardwareZoom ? 1 : currentZoom;
+                const cropW = Math.floor((vw * 0.88) / effectiveZoom);
+                const cropH = Math.floor((vh * 0.72) / effectiveZoom);
+                const startX = Math.floor((vw - cropW) / 2);
+                const startY = Math.floor((vh - cropH) / 2);
+
+                // Escalar a un ancho óptimo para OCR rápido y nítido
+                const targetWidth = Math.min(1000, cropW);
+                const scale = targetWidth / cropW;
+                const targetHeight = Math.floor(cropH * scale);
+
+                ocrCanvas.width = targetWidth;
+                ocrCanvas.height = targetHeight;
+
+                // Filtro suave de contraste para reducir el brillo/reflejo de la otra pantalla
+                ocrCtx.filter = 'contrast(1.35) brightness(1.02) grayscale(1)';
+                ocrCtx.drawImage(videoEl, startX, startY, cropW, cropH, 0, 0, targetWidth, targetHeight);
+                ocrCtx.filter = 'none';
+                return true;
+            }
+
+            // Analizador Gemini Flash Vision en paralelo (lee "$95⁰⁰" con superíndice y "4MV7972GK4P4AK" sin fallar por reflejos)
+            async function analyzeCanvasWithGeminiVision(base64Jpeg) {
+                if (isCloudVisionBusy) return false;
+                isCloudVisionBusy = true;
+                try {
+                    const apiKey = "";
+                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+                    const payload = {
+                        contents: [{
+                            role: "user",
+                            parts: [
+                                {
+                                    text: "Extract the Amazon Gift Card claim code (14 or 15 uppercase alphanumeric characters, e.g. 4MV7972GK4P4AK, ignoring hyphens) and the dollar value (e.g. $95 from $95^00). Ignore emails and person names."
+                                },
+                                {
+                                    inlineData: {
+                                        mimeType: "image/jpeg",
+                                        data: base64Jpeg
+                                    }
+                                }
+                            ]
+                        }],
+                        generationConfig: {
+                            responseMimeType: "application/json",
+                            responseSchema: {
+                                type: "OBJECT",
+                                properties: {
+                                    code: { type: "STRING", nullable: true },
+                                    valueUsd: { type: "STRING", nullable: true }
+                                }
+                            }
+                        }
+                    };
+
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) return false;
+                    const result = await response.json();
+                    const jsonText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (!jsonText) return false;
+
+                    const parsed = JSON.parse(jsonText);
+                    const validCode = parsed.code ? extractValidAmazonCode(parsed.code) : null;
+                    let validVal = null;
+                    if (parsed.valueUsd) {
+                        const cleanNum = parsed.valueUsd.toString().replace(/[^0-9.]/g, '');
+                        if (cleanNum && parseFloat(cleanNum) > 0) {
+                            validVal = `$${parseFloat(cleanNum)}`;
+                        }
+                    }
+
+                    if (validCode || validVal) {
+                        return processExtractedData(validCode, validVal, false);
+                    }
+                } catch (e) {
+                    // Si está offline o fuera del entorno con llave, Tesseract local sigue funcionando sin interrupción
+                } finally {
+                    isCloudVisionBusy = false;
+                }
+                return false;
+            }
+
+            // Bucle continuo de escaneo en vivo (sin que el usuario toque ningún botón de foto)
+            async function processLiveFrameLoop() {
+                updateLatchingHUD();
+                if (!isScanning) return;
+                if (videoEl.classList.contains('hidden')) return;
+                if (!captureVideoFrameToCanvas()) return;
+
+                // 1. Lanzar consulta rápida a Visión IA si está disponible
+                if (!isCloudVisionBusy) {
+                    try {
+                        const dataUrl = ocrCanvas.toDataURL('image/jpeg', 0.72);
+                        const base64Data = dataUrl.split(',')[1];
+                        if (base64Data) {
+                            analyzeCanvasWithGeminiVision(base64Data);
+                        }
+                    } catch (e) {}
+                }
+
+                // 2. Ejecutar OCR local Tesseract sobre el mismo fotograma
+                if (!isLocalOcrBusy && ocrWorker) {
+                    isLocalOcrBusy = true;
+                    try {
+                        const { data } = await ocrWorker.recognize(ocrCanvas);
+                        if (data && data.text) {
+                            parseRawOcrText(data.text, false);
+                        }
+                    } catch (e) {
+                    } finally {
+                        isLocalOcrBusy = false;
+                    }
+                }
+            }
+
+            // Ejecutar el barrido automático cada 650ms
+            setInterval(processLiveFrameLoop, 650);
+
+            // ===================================================================
+            // 6. PRUEBA CON IMAGEN / CAPTURA DE PANTALLA (OPCIONAL)
+            // ===================================================================
+            fileTestInput.addEventListener('change', async (e) => {
+                const file = e.target.files && e.target.files[0];
+                if (!file) return;
+
+                const imageUrl = URL.createObjectURL(file);
+                cameraFallbackMsg.classList.add('hidden');
+                cameraFallbackMsg.classList.remove('flex');
+                videoEl.classList.add('hidden');
+                fallbackPreviewEl.src = imageUrl;
+                fallbackPreviewEl.classList.remove('hidden');
+
+                statusPillEl.textContent = 'Analizando captura de pantalla...';
+
+                try {
+                    // Cargar la imagen en el canvas para procesarla con ambos motores
+                    const img = new Image();
+                    img.src = imageUrl;
+                    await new Promise((res, rej) => {
+                        img.onload = res;
+                        img.onerror = rej;
+                    });
+
+                    ocrCanvas.width = img.naturalWidth;
+                    ocrCanvas.height = img.naturalHeight;
+                    ocrCtx.drawImage(img, 0, 0);
+
+                    let captured = false;
+
+                    // Intentar primero con Visión IA para lectura instantánea de "$95⁰⁰" y "4MV7972GK4P4AK"
+                    try {
+                        const base64Data = ocrCanvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+                        captured = await analyzeCanvasWithGeminiVision(base64Data);
+                    } catch (err) {}
+
+                    // Ejecutar también el motor Tesseract local con la nueva regla de "$95⁰⁰"
+                    if (!captured) {
+                        if (!ocrWorker) await initOcrEngine();
+                        if (ocrWorker) {
+                            const { data } = await ocrWorker.recognize(ocrCanvas);
+                            captured = parseRawOcrText(data.text, true);
+                        }
+                    }
+
+                    if (!captured && (!latchedCode && !latchedValue)) {
+                        statusPillEl.textContent = 'No se detectó el código. Intenta acercar más la imagen.';
+                        showToast('No se encontró código + valor en la imagen');
+                    }
+
+                    // Volver automáticamente al video en vivo después de 2.5 segundos si la cámara estaba activa
+                    setTimeout(() => {
+                        if (mediaStream) {
+                            fallbackPreviewEl.classList.add('hidden');
+                            videoEl.classList.remove('hidden');
+                        }
+                    }, 2500);
+                } catch (err) {
+                    statusPillEl.textContent = 'Error al procesar la imagen.';
+                } finally {
+                    fileTestInput.value = '';
+                }
+            });
+
+            // ===================================================================
+            // 7. BOTÓN DEMO (PRUEBA EL CASO EXACTO DE TU FOTO: 4MV7972GK4P4AK $95)
+            // ===================================================================
+            let firstRealDemoUsed = false;
+            const demoAmounts = ['$95⁰⁰', '$25⁰⁰', '$50⁰⁰', '$100⁰⁰', '$15⁰⁰'];
+
+            btnSimulate.addEventListener('click', () => {
+                if (!firstRealDemoUsed && !scannedSet.has('4MV7972GK4P4AK')) {
+                    firstRealDemoUsed = true;
+                    // Simula exactamente el texto que entrega el OCR al ver tu foto de Amazon ($95⁰⁰ leído como $9500 y Código de canje)
+                    const realPhotoOcrSimulation = `
+                        amazon $9500
+                        LEONARDO MENDOZA Cambiar de cuenta
+                        leonard.omendo.zaring@gmail.com
+                        Canjear
+                        Código de canje: 4MV7972GK4P4AK Copiar
+                    `;
+                    parseRawOcrText(realPhotoOcrSimulation, true);
+                } else {
+                    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+                    const gen = (n) => Array.from({ length: n }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+                    const randomCode = gen(14);
+                    const randomAmount = demoAmounts[Math.floor(Math.random() * demoAmounts.length)].replace('⁰⁰', '00');
+                    const simText = `amazon ${randomAmount}\nCódigo de canje: ${randomCode} Copiar`;
+                    parseRawOcrText(simText, true);
+                }
+            });
+
+            // --- Renderizar Lista Acumulativa ---
+            function renderList() {
+                const total = scannedList.length;
+                codesCountEl.textContent = total;
+
+                btnCopyAll.disabled = total === 0;
+                btnClearAll.disabled = total === 0;
+
+                if (total === 0) {
+                    emptyStateEl.classList.remove('hidden');
+                    codesListEl.classList.add('hidden');
+                    codesListEl.innerHTML = '';
+                    return;
+                }
+
+                emptyStateEl.classList.add('hidden');
+                codesListEl.classList.remove('hidden');
+
+                codesListEl.innerHTML = scannedList.map((item, idx) => {
+                    const displayStr = `${item.code} (${item.value})`;
+                    const chronologicalNumber = total - idx;
+                    return `
+                        <li class="flex items-center justify-between px-3.5 py-2.5 hover:bg-slate-50 transition">
+                            <div class="flex items-center gap-2.5 min-w-0">
+                                <span class="text-[11px] font-semibold text-slate-400 w-5 text-right shrink-0">
+                                    #${chronologicalNumber}
+                                </span>
+                                <span class="font-mono-code text-sm sm:text-base font-bold text-slate-900 tracking-tight truncate select-all">
+                                    ${displayStr}
+                                </span>
+                            </div>
+                            <div class="flex items-center gap-1 shrink-0">
+                                <button type="button" data-action="edit" data-code="${item.code}"
+                                    class="p-2 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition"
+                                    title="Editar código o valor">
+                                    <svg class="w-4 h-4 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+                                    </svg>
+                                </button>
+                                <button type="button" data-action="delete" data-code="${item.code}"
+                                    class="p-2 text-[#D32F2F] hover:bg-red-50 rounded-lg transition"
+                                    title="Borrar de la lista">
+                                    <svg class="w-4 h-4 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </li>
+                    `;
+                }).join('');
+            }
+
+            // --- Eventos de Edición y Borrado Individual ---
+            codesListEl.addEventListener('click', (e) => {
+                const btn = e.target.closest('button[data-action]');
+                if (!btn) return;
+                const action = btn.getAttribute('data-action');
+                const codeKey = btn.getAttribute('data-code');
+
+                if (action === 'delete') {
+                    scannedList = scannedList.filter(item => item.code !== codeKey);
+                    scannedSet.delete(codeKey);
+                    saveToStorage();
+                    renderList();
+                    statusPillEl.textContent = `Eliminado: ${codeKey}. Listo para re-escanear.`;
+                    showToast(`Código ${codeKey} eliminado`);
+                } else if (action === 'edit') {
+                    const found = scannedList.find(item => item.code === codeKey);
+                    if (!found) return;
+                    editingCodeKey = codeKey;
+                    modalTitle.textContent = 'Editar Código Escaneado';
+                    inputManualCode.value = found.code;
+                    inputManualValue.value = found.value;
+                    manualError.classList.add('hidden');
+                    manualModal.classList.remove('hidden');
+                    inputManualCode.focus();
+                }
+            });
+
+            // --- Pausar / Reanudar Escaneo ---
+            btnToggleScan.addEventListener('click', () => {
+                isScanning = !isScanning;
+                if (isScanning) {
+                    scanToggleText.textContent = 'En Vivo';
+                    scanDot.classList.remove('bg-amber-400');
+                    scanDot.classList.add('bg-emerald-400', 'animate-pulse');
+                    laserEl.classList.remove('hidden');
+                    statusPillEl.textContent = 'Escaneando en vivo...';
+                } else {
+                    scanToggleText.textContent = 'Pausado';
+                    scanDot.classList.remove('bg-emerald-400', 'animate-pulse');
+                    scanDot.classList.add('bg-amber-400');
+                    laserEl.classList.add('hidden');
+                    statusPillEl.textContent = 'Escaneo en pausa';
+                }
+            });
+
+            // --- Linterna ---
+            btnTorch.addEventListener('click', async () => {
+                if (!videoTrack) return;
+                try {
+                    torchOn = !torchOn;
+                    await videoTrack.applyConstraints({ advanced: [{ torch: torchOn }] });
+                    btnTorch.classList.toggle('bg-amber-500/80', torchOn);
+                } catch (e) {
+                    torchOn = false;
+                }
+            });
+
+            btnRetryCamera.addEventListener('click', () => {
+                initCamera();
+            });
+
+            // --- Copiar Lista al Portapapeles ---
+            btnCopyAll.addEventListener('click', () => {
+                if (scannedList.length === 0) return;
+
+                const textToCopy = scannedList
+                    .slice()
+                    .reverse()
+                    .map(item => `${item.code} (${item.value})`)
+                    .join('\n');
+
+                const tempTextArea = document.createElement('textarea');
+                tempTextArea.value = textToCopy;
+                tempTextArea.setAttribute('readonly', '');
+                tempTextArea.style.position = 'fixed';
+                tempTextArea.style.top = '-9999px';
+                document.body.appendChild(tempTextArea);
+                tempTextArea.select();
+
+                try {
+                    document.execCommand('copy');
+                    triggerHaptic();
+                    showToast(`Copiados ${scannedList.length} códigos al portapapeles`);
+                } catch (err) {
+                    showToast('Error al copiar');
+                } finally {
+                    document.body.removeChild(tempTextArea);
+                }
+            });
+
+            // --- Limpiar Todo ---
+            btnClearAll.addEventListener('click', () => {
+                if (scannedList.length === 0) return;
+                confirmClearModal.classList.remove('hidden');
+            });
+
+            btnCancelClear.addEventListener('click', () => {
+                confirmClearModal.classList.add('hidden');
+            });
+
+            btnConfirmClear.addEventListener('click', () => {
+                scannedList = [];
+                scannedSet.clear();
+                latchedCode = null;
+                latchedValue = null;
+                firstRealDemoUsed = false;
+                updateLatchingHUD();
+                saveToStorage();
+                renderList();
+                confirmClearModal.classList.add('hidden');
+                statusPillEl.textContent = 'Lista limpia. Enfoca la pantalla para escanear.';
+                showToast('Lista reiniciada');
+            });
+
+            // --- Modal Manual ---
+            function closeManualModal() {
+                manualModal.classList.add('hidden');
+                editingCodeKey = null;
+                manualForm.reset();
+                manualError.classList.add('hidden');
+            }
+
+            btnOpenManual.addEventListener('click', () => {
+                editingCodeKey = null;
+                modalTitle.textContent = 'Agregar Código Manualmente';
+                inputManualCode.value = '';
+                inputManualValue.value = '';
+                manualError.classList.add('hidden');
+                manualModal.classList.remove('hidden');
+                inputManualCode.focus();
+            });
+
+            btnCloseModal.addEventListener('click', closeManualModal);
+            btnCancelModal.addEventListener('click', closeManualModal);
+
+            manualForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const rawCode = inputManualCode.value.trim().toUpperCase().replace(/[\s-]/g, '');
+                let rawValInput = inputManualValue.value.trim();
+                if (/^\d+(\.\d{1,2})?$/.test(rawValInput)) {
+                    rawValInput = `$${rawValInput}`;
+                }
+                const cleanVal = extractAmazonUsdValue(rawValInput);
+
+                if (rawCode.length < 14 || rawCode.length > 15 || !/[A-Z]/.test(rawCode) || !/\d/.test(rawCode)) {
+                    manualError.textContent = 'El código debe tener 14 o 15 caracteres alfanuméricos.';
+                    manualError.classList.remove('hidden');
+                    return;
+                }
+
+                if (!cleanVal) {
+                    manualError.textContent = 'Ingresa un valor válido en USD (ejemplo: $95).';
+                    manualError.classList.remove('hidden');
+                    return;
+                }
+
+                if (editingCodeKey) {
+                    if (rawCode !== editingCodeKey && scannedSet.has(rawCode)) {
+                        manualError.textContent = 'Ese código ya está en la lista.';
+                        manualError.classList.remove('hidden');
+                        return;
+                    }
+                    scannedSet.delete(editingCodeKey);
+                    scannedSet.add(rawCode);
+                    scannedList = scannedList.map(item =>
+                        item.code === editingCodeKey ? { code: rawCode, value: cleanVal } : item
+                    );
+                    saveToStorage();
+                    renderList();
+                    closeManualModal();
+                    showToast(`Actualizado: ${rawCode} (${cleanVal})`);
+                } else {
+                    if (scannedSet.has(rawCode)) {
+                        manualError.textContent = 'Este código ya fue escaneado.';
+                        manualError.classList.remove('hidden');
+                        return;
+                    }
+                    scannedSet.add(rawCode);
+                    scannedList.unshift({ code: rawCode, value: cleanVal });
+                    saveToStorage();
+                    renderList();
+                    closeManualModal();
+                    triggerHaptic();
+                    playBeep();
+                    showToast(`Agregado: ${rawCode} (${cleanVal})`);
+                }
+            });
+
+            // --- Inicialización ---
+            window.addEventListener('DOMContentLoaded', () => {
+                loadFromStorage();
+                initCamera();
+                initOcrEngine();
+            });
+        })();
+    </script>
+</body>
+</html>
