@@ -3,8 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Escáner Amazon Gift Card</title>
+    <title>Escáner Simultáneo Amazon Gift Card</title>
+    <!-- Tailwind CSS y Tesseract.js para OCR -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; }
@@ -15,7 +17,7 @@
 
     <!-- ADVERTENCIA DE HTTPS -->
     <div id="secure-warning" class="hidden bg-amber-600 text-white text-xs px-3 py-1.5 text-center font-medium">
-        ⚠️ Abre esta página mediante HTTPS (GitHub Pages) para permitir el uso de la cámara.
+        ⚠️ Para usar la cámara en vivo, asegúrate de abrir esta página mediante HTTPS.
     </div>
 
     <!-- VIZOR DE CÁMARA (45% Superior) -->
@@ -26,17 +28,17 @@
         <!-- Recuadro Guía -->
         <div class="absolute w-[90%] h-[80%] border-2 border-emerald-400 rounded-xl pointer-events-none shadow-[0_0_15px_rgba(16,185,129,0.4)] flex flex-col justify-between p-2">
             <div class="bg-black/60 text-emerald-300 text-[11px] px-2 py-0.5 rounded self-center font-semibold">
-                Visor de Cámara Activo
+                Lectura Simultánea (Valor + Código)
             </div>
             <div class="bg-black/60 text-white text-[11px] px-2 py-0.5 rounded self-center">
-                Enfoca la tarjeta de Amazon
+                Mantén ambos visibles en el recuadro
             </div>
         </div>
 
-        <!-- Barra de Estado y Zoom -->
+        <!-- Controles flotantes superiores -->
         <div class="absolute top-3 left-3 right-3 flex justify-between items-center z-10">
             <div id="status-badge" class="bg-black/80 backdrop-blur text-emerald-400 border border-emerald-500/30 text-xs px-3 py-1.5 rounded-lg font-medium shadow-lg">
-                Cámara lista
+                Iniciando motor y cámara...
             </div>
             <div class="flex gap-1.5 bg-black/70 backdrop-blur p-1 rounded-xl border border-white/10">
                 <button onclick="setZoom(1)" class="zoom-btn px-2.5 py-1 text-xs font-bold rounded-lg bg-emerald-500 text-black">1x</button>
@@ -50,15 +52,15 @@
     <div class="flex-1 bg-slate-100 text-slate-800 flex flex-col p-4 rounded-t-2xl shadow-2xl z-10">
         <div class="flex justify-between items-center mb-2">
             <h2 id="counter-title" class="font-bold text-base text-slate-700">Códigos acumulados (0)</h2>
-            <button onclick="manualAdd()" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-semibold transition shadow">
-                + Agregar Manual
+            <button onclick="manualAdd()" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-semibold transition">
+                + Prueba Manual
             </button>
         </div>
 
         <!-- Contenedor de la lista -->
         <div id="list-container" class="flex-1 bg-white border border-slate-200 rounded-xl overflow-y-auto p-2 mb-3 shadow-inner divide-y divide-slate-100">
             <div id="empty-state" class="h-full flex flex-col items-center justify-center text-slate-400 text-center p-4">
-                <p class="text-xs font-medium">Usa "+ Agregar Manual" o interactúa con el escáner rápido.</p>
+                <p class="text-xs font-medium">Enfoca la pantalla de Amazon para capturar el valor y el código al tiempo.</p>
             </div>
         </div>
 
@@ -73,9 +75,10 @@
         </div>
     </div>
 
-    <!-- SCRIPT LIMPIO Y FUNCIONAL -->
+    <!-- LÓGICA COMPLETA DE CÁMARA Y OCR SIMULTÁNEO -->
     <script>
         const video = document.getElementById('webcam');
+        const canvas = document.getElementById('canvas');
         const statusBadge = document.getElementById('status-badge');
         const listContainer = document.getElementById('list-container');
         const counterTitle = document.getElementById('counter-title');
@@ -83,6 +86,8 @@
         const secureWarning = document.getElementById('secure-warning');
 
         let scannedCards = [];
+        let worker = null;
+        let isProcessing = false;
         let currentZoom = 1;
         let videoTrack = null;
 
@@ -90,7 +95,12 @@
             secureWarning.classList.remove('hidden');
         }
 
-        // 1. Iniciar la cámara inmediatamente sin bloqueos de red
+        // Inicialización segura: Arranca la cámara primero y carga el OCR en segundo plano para evitar bloqueos
+        async function initApp() {
+            await startCamera();
+            initOCRWorker();
+        }
+
         async function startCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
@@ -98,10 +108,23 @@
                 });
                 video.srcObject = stream;
                 videoTrack = stream.getVideoTracks()[0];
-                statusBadge.innerText = "Cámara activa en vivo";
+                statusBadge.innerText = "Cámara activa. Cargando OCR...";
             } catch (err) {
                 statusBadge.innerText = "Error de cámara";
-                alert("No se pudo iniciar la cámara. Verifica los permisos en tu navegador.");
+                alert("No se pudo acceder a la cámara. Concede permisos.");
+            }
+        }
+
+        async function initOCRWorker() {
+            try {
+                worker = await Tesseract.createWorker('eng');
+                await worker.setParameters({
+                    tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789$-.USDcanjeCodigocopycopiar',
+                });
+                statusBadge.innerText = "Escaneando en vivo (Valor + Código)";
+                startScanningLoop();
+            } catch (e) {
+                statusBadge.innerText = "Error cargando motor OCR";
             }
         }
 
@@ -122,28 +145,91 @@
             }
         }
 
-        // 2. Método rápido y confiable para registrar códigos y valores limpios
-        function manualAdd() {
-            const codeInput = prompt("Ingresa el código de 14 caracteres (ej: 4MV7972GK4P4AK):");
-            if (!codeInput) return;
-            const valInput = prompt("Ingresa el valor en USD (ej: 95 o $95):");
-            if (!valInput) return;
+        function startScanningLoop() {
+            setInterval(async () => {
+                if (isProcessing || !worker || video.readyState !== video.HAVE_ENOUGH_DATA) return;
+                isProcessing = true;
 
-            const cleanCode = codeInput.toUpperCase().replace(/[-\s]/g, "");
-            const cleanVal = valInput.startsWith('$') ? valInput : `$${valInput}`;
+                try {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            if (cleanCode.length < 10) {
-                alert("El código parece incompleto.");
-                return;
+                    const { data: { text } } = await worker.recognize(canvas);
+                    processFrameText(text);
+                } catch (e) {
+                    console.error(e);
+                } finally {
+                    isProcessing = false;
+                }
+            }, 1200);
+        }
+
+        function processFrameText(rawText) {
+            const cleanText = rawText.toUpperCase();
+            
+            const valMatch = extractUsd(cleanText);
+            const codeMatch = extractClaimCode(cleanText);
+
+            if (valMatch && codeMatch) {
+                const normalizedCode = codeMatch.replace(/-/g, "").replace(/\s/g, "");
+                
+                if (!scannedCards.some(item => item.code === normalizedCode)) {
+                    const newCard = { code: normalizedCode, value: valMatch };
+                    scannedCards.unshift(newCard);
+                    
+                    updateUI();
+                    triggerFeedback();
+                    statusBadge.innerText = `¡Capturado!: ${normalizedCode} (${valMatch})`;
+                    statusBadge.classList.add('bg-emerald-500', 'text-black');
+                    setTimeout(() => {
+                        statusBadge.classList.remove('bg-emerald-500', 'text-black');
+                        statusBadge.innerText = "Escaneando en vivo (Valor + Código)";
+                    }, 3000);
+                }
+            } else if (codeMatch) {
+                statusBadge.innerText = "Código leído. Falta ver el valor $";
+            } else if (valMatch) {
+                statusBadge.innerText = `Valor (${valMatch}). Busca el código...`;
             }
+        }
 
-            if (!scannedCards.some(i => i.code === cleanCode)) {
-                scannedCards.unshift({ code: cleanCode, value: cleanVal });
-                updateUI();
-                if (navigator.vibrate) navigator.vibrate(70);
-            } else {
-                alert("Este código ya se encuentra en la lista.");
+        function extractUsd(text) {
+            const dollarRegex = /\$\s*(\d{1,4})(?:[\.,\s]?\d{2})?\b/;
+            const match = text.match(dollarRegex);
+            if (match) {
+                let num = parseInt(match[1]);
+                if (num >= 500 && num % 100 === 0 && num <= 200000 && !text.includes('.')) {
+                    num = num / 100;
+                }
+                if (num >= 1 && num <= 2000) return `$${num}`;
             }
+            const usdMatch = text.match(/\b(\d{1,4})(?:\.\d{2})?\s*USD\b/);
+            if (usdMatch) {
+                const amt = parseInt(usdMatch[1]);
+                if (amt >= 1 && amt <= 2000) return `$${amt}`;
+            }
+            return null;
+        }
+
+        function extractClaimCode(text) {
+            const clean = text.replace(/COPY|COPIAR/g, " ");
+            const hyphenRegex = /\b[A-Z0-9]{4}\s*-\s*[A-Z0-9]{6}\s*-\s*[A-Z0-9]{4,5}\b/;
+            const rawRegex = /\b[A-Z0-9]{14,15}\b/;
+
+            let found = clean.match(hyphenRegex)?.[0] || clean.match(rawRegex)?.[0];
+            if (found) {
+                const candidate = found.replace(/-/g, "").replace(/\s/g, "");
+                const digits = (candidate.match(/\d/g) || []).length;
+                const letters = (candidate.match(/[A-Z]/g) || []).length;
+                
+                const banned = ["CAMBIARDECUENT", "TARJETADEREGAL", "APLICADOATUCUE"];
+                if (candidate.length >= 14 && digits >= 2 && letters >= 4 && !banned.includes(candidate)) {
+                    return candidate;
+                }
+            }
+            return null;
         }
 
         function updateUI() {
@@ -151,9 +237,9 @@
             if (scannedCards.length > 0) {
                 emptyState.style.display = 'none';
                 listContainer.innerHTML = scannedCards.map((item, index) => `
-                    <div class="flex justify-between items-center py-2.5 px-2 hover:bg-slate-50 transition border-b border-slate-100 last:border-none">
+                    <div class="flex justify-between items-center py-2.5 px-2 hover:bg-slate-50 transition">
                         <span class="mono font-semibold text-sm text-slate-900">${item.code} <span class="text-emerald-600 font-bold">(${item.value})</span></span>
-                        <button onclick="removeItem(${index})" class="text-rose-500 hover:text-rose-700 p-1 font-bold text-sm">✕</button>
+                        <button onclick="removeItem(${index})" class="text-rose-500 hover:text-rose-700 p-1">✕</button>
                     </div>
                 `).join('');
             } else {
@@ -176,17 +262,26 @@
         }
 
         function copyList() {
-            if (scannedCards.length === 0) {
-                alert("La lista está vacía.");
-                return;
-            }
+            if (scannedCards.length === 0) return;
             const text = scannedCards.map(i => `${i.code} (${i.value})`).join('\n');
             navigator.clipboard.writeText(text);
-            alert("¡Lista copiada al portapapeles con éxito!");
+            alert("¡Lista copiada al portapapeles!");
         }
 
-        // Arrancar cámara al cargar la página
-        window.addEventListener('load', startCamera);
+        function manualAdd() {
+            const code = prompt("Ingresa el código de 14 caracteres:");
+            const val = prompt("Ingresa el valor (ej. $95):");
+            if (code && val) {
+                scannedCards.unshift({ code: code.toUpperCase().replace(/[-\s]/g, ""), value: val.startsWith('$') ? val : `$${val}` });
+                updateUI();
+            }
+        }
+
+        function triggerFeedback() {
+            if (navigator.vibrate) navigator.vibrate(80);
+        }
+
+        window.addEventListener('load', initApp);
     </script>
 </body>
 </html>
