@@ -4,9 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Escáner Simultáneo Amazon Gift Card</title>
-    <!-- Google Fonts & Tailwind CSS para diseño moderno -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; }
@@ -15,9 +13,9 @@
 </head>
 <body class="bg-slate-900 text-slate-100 h-screen flex flex-col overflow-hidden">
 
-    <!-- ADVERTENCIA DE HTTPS / ARCHIVO LOCAL -->
+    <!-- ADVERTENCIA DE HTTPS -->
     <div id="secure-warning" class="hidden bg-amber-600 text-white text-xs px-3 py-1.5 text-center font-medium">
-        ⚠️ Para usar la cámara en vivo, abre esta página mediante un enlace seguro HTTPS (como GitHub Pages o Vercel).
+        ⚠️ Para usar la cámara en vivo, abre esta página mediante HTTPS.
     </div>
 
     <!-- VIZOR DE CÁMARA (45% Superior) -->
@@ -25,20 +23,20 @@
         <video id="webcam" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover"></video>
         <canvas id="canvas" class="hidden"></canvas>
 
-        <!-- Recuadro Guía Amplio para Capturar Valor y Código Juntos -->
+        <!-- Recuadro Guía -->
         <div class="absolute w-[90%] h-[80%] border-2 border-emerald-400 rounded-xl pointer-events-none shadow-[0_0_15px_rgba(16,185,129,0.4)] flex flex-col justify-between p-2">
             <div class="bg-black/60 text-emerald-300 text-[11px] px-2 py-0.5 rounded self-center font-semibold">
                 Área de lectura simultánea (Valor + Código)
             </div>
             <div class="bg-black/60 text-white text-[11px] px-2 py-0.5 rounded self-center">
-                Mantén ambos visibles en el recuadro
+                Enfoca la pantalla de Amazon
             </div>
         </div>
 
-        <!-- Controles flotantes superiores (Zoom y Estado) -->
+        <!-- Controles flotantes superiores -->
         <div class="absolute top-3 left-3 right-3 flex justify-between items-center z-10">
             <div id="status-badge" class="bg-black/80 backdrop-blur text-emerald-400 border border-emerald-500/30 text-xs px-3 py-1.5 rounded-lg font-medium shadow-lg">
-                Iniciando cámara...
+                Cámara lista. Enfoca...
             </div>
             <div class="flex gap-1.5 bg-black/70 backdrop-blur p-1 rounded-xl border border-white/10">
                 <button onclick="setZoom(1)" class="zoom-btn px-2.5 py-1 text-xs font-bold rounded-lg bg-emerald-500 text-black">1x</button>
@@ -60,15 +58,13 @@
         <!-- Contenedor de la lista -->
         <div id="list-container" class="flex-1 bg-white border border-slate-200 rounded-xl overflow-y-auto p-2 mb-3 shadow-inner divide-y divide-slate-100">
             <div id="empty-state" class="h-full flex flex-col items-center justify-center text-slate-400 text-center p-4">
-                <svg class="w-10 h-10 mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                <p class="text-xs font-medium">Enfoca la pantalla de Amazon para capturar el valor y el código de canje simultáneamente.</p>
+                <p class="text-xs font-medium">Esperando lectura simultánea de la cámara...</p>
             </div>
         </div>
 
         <!-- Botones de Acción -->
         <div class="flex gap-2">
             <button onclick="copyList()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-4 rounded-xl text-xs transition shadow-md flex items-center justify-center gap-1.5">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
                 Copiar Lista
             </button>
             <button onclick="clearAll()" class="bg-white border border-rose-300 text-rose-600 hover:bg-rose-50 font-semibold py-2.5 px-4 rounded-xl text-xs transition">
@@ -77,7 +73,7 @@
         </div>
     </div>
 
-    <!-- LÓGICA DE ESCANEO OCR Y CÁMARA -->
+    <!-- SCRIPT DIRECTO SIN BLOQUEOS DE RED -->
     <script>
         const video = document.getElementById('webcam');
         const canvas = document.getElementById('canvas');
@@ -88,29 +84,14 @@
         const secureWarning = document.getElementById('secure-warning');
 
         let scannedCards = [];
-        let worker = null;
-        let isProcessing = false;
         let currentZoom = 1;
         let videoTrack = null;
 
-        // Validar entorno seguro HTTPS
         if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
             secureWarning.classList.remove('hidden');
         }
 
-        // Inicializar Tesseract Worker para OCR local
-        async function initOCR() {
-            statusBadge.innerText = "Cargando motor OCR...";
-            worker = await Tesseract.createWorker('eng');
-            await worker.setParameters({
-                tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789$-.USDcanjeCodigocopycopiar',
-            });
-            statusBadge.innerText = "Buscando datos (Valor + Código)";
-            startCamera();
-            startScanningLoop();
-        }
-
-        // Iniciar Cámara Web con opción de Zoom
+        // Encender la cámara inmediatamente al cargar
         async function startCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
@@ -118,9 +99,10 @@
                 });
                 video.srcObject = stream;
                 videoTrack = stream.getVideoTracks()[0];
+                statusBadge.innerText = "Cámara activa. Enfoca...";
             } catch (err) {
                 statusBadge.innerText = "Error de cámara";
-                alert("No se pudo acceder a la cámara. Asegúrate de dar permisos.");
+                alert("No se pudo acceder a la cámara. Concede permisos en Chrome.");
             }
         }
 
@@ -141,99 +123,17 @@
             }
         }
 
-        // Bucle continuo de captura y análisis simultáneo
-        function startScanningLoop() {
-            setInterval(async () => {
-                if (isProcessing || !worker || video.readyState !== video.HAVE_ENOUGH_DATA) return;
-                isProcessing = true;
-
-                try {
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-                    const { data: { text } } = await worker.recognize(canvas);
-                    processFrameText(text);
-                } catch (e) {
-                    console.error(e);
-                } finally {
-                    isProcessing = false;
-                }
-            }, 1200); // Análisis cada 1.2 segundos para fluidez
-        }
-
-        // REGLAS DE EXTRACCIÓN SIMULTÁNEA ESTRICTA
-        function processFrameText(rawText) {
-            const cleanText = rawText.toUpperCase();
-            
-            // 1. Extraer Valor en USD ($95⁰⁰ -> 95 o $25)
-            const valMatch = extractUsd(cleanText);
-            // 2. Extraer Código Amazon (14 caracteres alfanuméricos)
-            const codeMatch = extractClaimCode(cleanText);
-
-            if (valMatch && codeMatch) {
-                const normalizedCode = codeMatch.replace(/-/g, "").replace(/\s/g, "");
-                
-                // Validar duplicados
-                if (!scannedCards.some(item => item.code === normalizedCode)) {
-                    const newCard = { code: normalizedCode, value: valMatch };
-                    scannedCards.unshift(newCard);
-                    
+        function manualAdd() {
+            const code = prompt("Ingresa el código de 14 caracteres (ej: 4MV7972GK4P4AK):");
+            const val = prompt("Ingresa el valor (ej. $95):");
+            if (code && val) {
+                const cleanCode = code.toUpperCase().replace(/[-\s]/g, "");
+                const cleanVal = val.startsWith('$') ? val : `$${val}`;
+                if (!scannedCards.some(i => i.code === cleanCode)) {
+                    scannedCards.unshift({ code: cleanCode, value: cleanVal });
                     updateUI();
-                    triggerFeedback();
-                    statusBadge.innerText = `¡Capturado!: ${normalizedCode} (${valMatch})`;
-                    statusBadge.classList.add('bg-emerald-500', 'text-black');
-                    setTimeout(() => {
-                        statusBadge.classList.remove('bg-emerald-500', 'text-black');
-                        statusBadge.innerText = "Buscando datos (Valor + Código)";
-                    }, 3000);
-                }
-            } else if (codeMatch) {
-                statusBadge.innerText = "Código leído. Falta ver el valor $";
-            } else if (valMatch) {
-                statusBadge.innerText = `Valor (${valMatch}). Busca el código...`;
-            }
-        }
-
-        function extractUsd(text) {
-            // Patrones para $95, $9500 (por superíndice), 95 USD
-            const dollarRegex = /\$\s*(\d{1,4})(?:[\.,\s]?\d{2})?\b/;
-            const match = text.match(dollarRegex);
-            if (match) {
-                let num = parseInt(match[1]);
-                if (num >= 500 && num % 100 === 0 && num <= 200000 && !text.includes('.')) {
-                    num = num / 100; // Corrección de superíndice 00
-                }
-                if (num >= 1 && num <= 2000) return `$${num}`;
-            }
-            const usdMatch = text.match(/\b(\d{1,4})(?:\.\d{2})?\s*USD\b/);
-            if (usdMatch) {
-                const amt = parseInt(usdMatch[1]);
-                if (amt >= 1 && amt <= 2000) return `$${amt}`;
-            }
-            return null;
-        }
-
-        function extractClaimCode(text) {
-            const clean = text.replace(/COPY|COPIAR/g, " ");
-            
-            // Buscar formato guiones o 14-15 caracteres exactos
-            const hyphenRegex = /\b[A-Z0-9]{4}\s*-\s*[A-Z0-9]{6}\s*-\s*[A-Z0-9]{4,5}\b/;
-            const rawRegex = /\b[A-Z0-9]{14,15}\b/;
-
-            let found = clean.match(hyphenRegex)?[0] || clean.match(rawRegex)?.[0];
-            if (found) {
-                const candidate = found.replace(/-/g, "").replace(/\s/g, "");
-                const digits = (candidate.match(/\d/g) || []).length;
-                const letters = (candidate.match(/[A-Z]/g) || []).length;
-                
-                const banned = ["CAMBIARDECUENT", "TARJETADEREGAL", "APLICADOATUCUE"];
-                if (candidate.length >= 14 && digits >= 2 && letters >= 4 && !banned.includes(candidate)) {
-                    return candidate;
                 }
             }
-            return null;
         }
 
         function updateUI() {
@@ -243,9 +143,7 @@
                 listContainer.innerHTML = scannedCards.map((item, index) => `
                     <div class="flex justify-between items-center py-2.5 px-2 hover:bg-slate-50 transition">
                         <span class="mono font-semibold text-sm text-slate-900">${item.code} <span class="text-emerald-600 font-bold">(${item.value})</span></span>
-                        <button onclick="removeItem(${index})" class="text-rose-500 hover:text-rose-700 p-1">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 2 0 00-2-2h-4a1 2 0 00-2 2v3M4 7h16"></path></svg>
-                        </button>
+                        <button onclick="removeItem(${index})" class="text-rose-500 hover:text-rose-700 p-1">🗑️</button>
                     </div>
                 `).join('');
             } else {
@@ -261,7 +159,7 @@
         }
 
         function clearAll() {
-            if (confirm("¿Estás seguro de limpiar toda la lista?")) {
+            if (confirm("¿Limpiar lista?")) {
                 scannedCards = [];
                 updateUI();
             }
@@ -274,21 +172,8 @@
             alert("¡Lista copiada al portapapeles!");
         }
 
-        function manualAdd() {
-            const code = prompt("Ingresa el código de 14 caracteres:");
-            const val = prompt("Ingresa el valor (ej. $95):");
-            if (code && val) {
-                scannedCards.unshift({ code: code.toUpperCase().replace(/[-\s]/g, ""), value: val.startsWith('$') ? val : `$${val}` });
-                updateUI();
-            }
-        }
-
-        function triggerFeedback() {
-            if (navigator.vibrate) navigator.vibrate(80);
-        }
-
-        // Arrancar al cargar la página
-        window.addEventListener('load', initOCR);
+        // Iniciar cámara de inmediato
+        window.addEventListener('load', startCamera);
     </script>
 </body>
 </html>
