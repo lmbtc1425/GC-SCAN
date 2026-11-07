@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Escáner Simultáneo Amazon Gift Card</title>
+    <title>Escáner Amazon Gift Card</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
@@ -15,7 +15,7 @@
 
     <!-- ADVERTENCIA DE HTTPS -->
     <div id="secure-warning" class="hidden bg-amber-600 text-white text-xs px-3 py-1.5 text-center font-medium">
-        ⚠️ Para usar la cámara en vivo, abre esta página mediante HTTPS.
+        ⚠️ Abre esta página mediante HTTPS (GitHub Pages) para permitir el uso de la cámara.
     </div>
 
     <!-- VIZOR DE CÁMARA (45% Superior) -->
@@ -26,17 +26,17 @@
         <!-- Recuadro Guía -->
         <div class="absolute w-[90%] h-[80%] border-2 border-emerald-400 rounded-xl pointer-events-none shadow-[0_0_15px_rgba(16,185,129,0.4)] flex flex-col justify-between p-2">
             <div class="bg-black/60 text-emerald-300 text-[11px] px-2 py-0.5 rounded self-center font-semibold">
-                Área de lectura simultánea (Valor + Código)
+                Visor de Cámara Activo
             </div>
             <div class="bg-black/60 text-white text-[11px] px-2 py-0.5 rounded self-center">
-                Enfoca la pantalla de Amazon
+                Enfoca la tarjeta de Amazon
             </div>
         </div>
 
-        <!-- Controles flotantes superiores -->
+        <!-- Barra de Estado y Zoom -->
         <div class="absolute top-3 left-3 right-3 flex justify-between items-center z-10">
             <div id="status-badge" class="bg-black/80 backdrop-blur text-emerald-400 border border-emerald-500/30 text-xs px-3 py-1.5 rounded-lg font-medium shadow-lg">
-                Cámara lista. Enfoca...
+                Cámara lista
             </div>
             <div class="flex gap-1.5 bg-black/70 backdrop-blur p-1 rounded-xl border border-white/10">
                 <button onclick="setZoom(1)" class="zoom-btn px-2.5 py-1 text-xs font-bold rounded-lg bg-emerald-500 text-black">1x</button>
@@ -50,15 +50,15 @@
     <div class="flex-1 bg-slate-100 text-slate-800 flex flex-col p-4 rounded-t-2xl shadow-2xl z-10">
         <div class="flex justify-between items-center mb-2">
             <h2 id="counter-title" class="font-bold text-base text-slate-700">Códigos acumulados (0)</h2>
-            <button onclick="manualAdd()" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-semibold transition">
-                + Prueba Manual
+            <button onclick="manualAdd()" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-semibold transition shadow">
+                + Agregar Manual
             </button>
         </div>
 
         <!-- Contenedor de la lista -->
         <div id="list-container" class="flex-1 bg-white border border-slate-200 rounded-xl overflow-y-auto p-2 mb-3 shadow-inner divide-y divide-slate-100">
             <div id="empty-state" class="h-full flex flex-col items-center justify-center text-slate-400 text-center p-4">
-                <p class="text-xs font-medium">Esperando lectura simultánea de la cámara...</p>
+                <p class="text-xs font-medium">Usa "+ Agregar Manual" o interactúa con el escáner rápido.</p>
             </div>
         </div>
 
@@ -73,10 +73,9 @@
         </div>
     </div>
 
-    <!-- SCRIPT DIRECTO SIN BLOQUEOS DE RED -->
+    <!-- SCRIPT LIMPIO Y FUNCIONAL -->
     <script>
         const video = document.getElementById('webcam');
-        const canvas = document.getElementById('canvas');
         const statusBadge = document.getElementById('status-badge');
         const listContainer = document.getElementById('list-container');
         const counterTitle = document.getElementById('counter-title');
@@ -91,7 +90,7 @@
             secureWarning.classList.remove('hidden');
         }
 
-        // Encender la cámara inmediatamente al cargar
+        // 1. Iniciar la cámara inmediatamente sin bloqueos de red
         async function startCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
@@ -99,10 +98,10 @@
                 });
                 video.srcObject = stream;
                 videoTrack = stream.getVideoTracks()[0];
-                statusBadge.innerText = "Cámara activa. Enfoca...";
+                statusBadge.innerText = "Cámara activa en vivo";
             } catch (err) {
                 statusBadge.innerText = "Error de cámara";
-                alert("No se pudo acceder a la cámara. Concede permisos en Chrome.");
+                alert("No se pudo iniciar la cámara. Verifica los permisos en tu navegador.");
             }
         }
 
@@ -123,16 +122,27 @@
             }
         }
 
+        // 2. Método rápido y confiable para registrar códigos y valores limpios
         function manualAdd() {
-            const code = prompt("Ingresa el código de 14 caracteres (ej: 4MV7972GK4P4AK):");
-            const val = prompt("Ingresa el valor (ej. $95):");
-            if (code && val) {
-                const cleanCode = code.toUpperCase().replace(/[-\s]/g, "");
-                const cleanVal = val.startsWith('$') ? val : `$${val}`;
-                if (!scannedCards.some(i => i.code === cleanCode)) {
-                    scannedCards.unshift({ code: cleanCode, value: cleanVal });
-                    updateUI();
-                }
+            const codeInput = prompt("Ingresa el código de 14 caracteres (ej: 4MV7972GK4P4AK):");
+            if (!codeInput) return;
+            const valInput = prompt("Ingresa el valor en USD (ej: 95 o $95):");
+            if (!valInput) return;
+
+            const cleanCode = codeInput.toUpperCase().replace(/[-\s]/g, "");
+            const cleanVal = valInput.startsWith('$') ? valInput : `$${valInput}`;
+
+            if (cleanCode.length < 10) {
+                alert("El código parece incompleto.");
+                return;
+            }
+
+            if (!scannedCards.some(i => i.code === cleanCode)) {
+                scannedCards.unshift({ code: cleanCode, value: cleanVal });
+                updateUI();
+                if (navigator.vibrate) navigator.vibrate(70);
+            } else {
+                alert("Este código ya se encuentra en la lista.");
             }
         }
 
@@ -141,9 +151,9 @@
             if (scannedCards.length > 0) {
                 emptyState.style.display = 'none';
                 listContainer.innerHTML = scannedCards.map((item, index) => `
-                    <div class="flex justify-between items-center py-2.5 px-2 hover:bg-slate-50 transition">
+                    <div class="flex justify-between items-center py-2.5 px-2 hover:bg-slate-50 transition border-b border-slate-100 last:border-none">
                         <span class="mono font-semibold text-sm text-slate-900">${item.code} <span class="text-emerald-600 font-bold">(${item.value})</span></span>
-                        <button onclick="removeItem(${index})" class="text-rose-500 hover:text-rose-700 p-1">🗑️</button>
+                        <button onclick="removeItem(${index})" class="text-rose-500 hover:text-rose-700 p-1 font-bold text-sm">✕</button>
                     </div>
                 `).join('');
             } else {
@@ -159,20 +169,23 @@
         }
 
         function clearAll() {
-            if (confirm("¿Limpiar lista?")) {
+            if (confirm("¿Deseas limpiar toda la lista?")) {
                 scannedCards = [];
                 updateUI();
             }
         }
 
         function copyList() {
-            if (scannedCards.length === 0) return;
+            if (scannedCards.length === 0) {
+                alert("La lista está vacía.");
+                return;
+            }
             const text = scannedCards.map(i => `${i.code} (${i.value})`).join('\n');
             navigator.clipboard.writeText(text);
-            alert("¡Lista copiada al portapapeles!");
+            alert("¡Lista copiada al portapapeles con éxito!");
         }
 
-        // Iniciar cámara de inmediato
+        // Arrancar cámara al cargar la página
         window.addEventListener('load', startCamera);
     </script>
 </body>
